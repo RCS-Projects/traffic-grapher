@@ -273,7 +273,7 @@ function makeChart(card, root) {
         series.push({ label: 'Inbound', scale: 'bps', stroke: '#36a8f5', fill: 'rgba(54,168,245,.38)', width: 1.5, points: { show: false } }); values.push(data.inbound);
         series.push({ label: 'Outbound', scale: 'bps', stroke: '#ff8a3d', fill: 'rgba(255,138,61,.34)', width: 1.5, points: { show: false } }); values.push(data.outbound);
     }
-    const chart = new uPlot({ ...chartSize(root), ms: 1, series, scales: { x: { time: true, ms: 1 }, bps: { range } }, axes: [{ values: (_, values) => values.map((value) => new Date(value).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#758397' }, { side: 1, scale: 'bps', values: (_, values) => values.map((value) => value === 0 ? '0' : fmtBps(value)), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#92a2b5' }], cursor: { drag: { x: true, y: false }, points: { show: true, size: 6 } }, legend: { show: false } }, chartValues(data), root);
+    const chart = new uPlot({ ...chartSize(root), ms: 1, series, scales: { x: { time: true, ms: 1 }, bps: { range } }, axes: [{ values: (_, values) => values.map((value) => new Date(value).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#758397' }, { side: 1, scale: 'bps', size: 86, values: (_, values) => values.map((value) => value === 0 ? '0' : fmtBps(value)), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#92a2b5' }], cursor: { drag: { x: true, y: false }, points: { show: true, size: 6 } }, legend: { show: false } }, chartValues(data), root);
     chart.root = root; return chart;
 }
 

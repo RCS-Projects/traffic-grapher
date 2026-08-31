@@ -68,6 +68,7 @@
 .chart-wrap {
     min-height: 140px;
     max-height: 640px;
+    padding-right: 16px;
 }
 
 .resize-handle {
