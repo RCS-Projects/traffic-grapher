@@ -27,18 +27,18 @@ docker compose version
 
 ### 2. Clone and start Traffic Grapher
 
-The quickest deployment pulls the ready-built image from GitHub Container Registry:
+The reliable deployment path builds the image directly from the public source:
 
 ```bash
 git clone https://github.com/RCS-Projects/traffic-grapher.git
 cd traffic-grapher
-docker compose -f compose.ghcr.yaml up -d
+docker compose up -d --build
 ```
 
-To build from source instead:
+GitHub Actions also publishes `ghcr.io/rcs-projects/traffic-grapher:latest`. Once an organization owner changes that package's visibility to **Public**, users can start the prebuilt image instead:
 
 ```bash
-docker compose up -d --build
+docker compose -f compose.ghcr.yaml up -d
 ```
 
 ### 3. Open the dashboard
@@ -55,7 +55,7 @@ Open the floating gear icon, scan an SNMP device, select its interfaces, then st
 
 ## Docker deployment details
 
-The included [`compose.ghcr.yaml`](compose.ghcr.yaml) pulls the published image. [`compose.yaml`](compose.yaml) builds the same image locally from source. Both use Linux host networking so the container can reach SNMP devices on the same LAN and serve the dashboard directly on port `8080`.
+The included [`compose.yaml`](compose.yaml) builds locally from source. [`compose.ghcr.yaml`](compose.ghcr.yaml) pulls the GitHub-published image when that package is public or the Docker host is authenticated to GHCR. Both use Linux host networking so the container can reach SNMP devices on the same LAN and serve the dashboard directly on port `8080`.
 
 Configuration survives image upgrades in `./data/config.json`, including devices, interface names, groups, dashboard order, sizes, and graph-column setting. To back it up:
 
@@ -67,8 +67,7 @@ To update a checkout after pulling new source:
 
 ```bash
 git pull
-docker compose -f compose.ghcr.yaml pull
-docker compose -f compose.ghcr.yaml up -d
+docker compose up -d --build
 ```
 
 Useful operational commands:
