@@ -1,0 +1,11 @@
+services:
+  traffic-grapher:
+    build: .
+    container_name: traffic-grapher
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      CONFIG_DIR: /data
+      PORT: "8080"
+    volumes:
+      - ./data:/data

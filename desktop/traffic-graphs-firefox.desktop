@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Traffic Graphs
+Comment=Live network bandwidth dashboard
+Exec=firefox --kiosk http://192.168.120.10:8080
+Icon=utilities-system-monitor
+Terminal=false
+Categories=Network;System;

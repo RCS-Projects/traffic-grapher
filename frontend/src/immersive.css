@@ -1,0 +1,56 @@
+/* The dashboard is the application: controls live in the drawer, not in layout. */
+.topbar,
+.dashboard-heading {
+    display: none;
+}
+
+.dashboard-shell {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+}
+
+.dashboard {
+    gap: 10px;
+    grid-template-columns: repeat(var(--dashboard-columns, 1), minmax(0, 1fr));
+}
+
+.quick-settings {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: #10172299;
+    color: #8490a1;
+    font-size: 16px;
+    opacity: .3;
+    transition: opacity .15s, background .15s;
+}
+
+.quick-settings:hover,
+.quick-settings:focus-visible {
+    opacity: 1;
+    background: #1a2432;
+    border-color: #42536a;
+    color: #edf3fa;
+}
+
+.card-actions {
+    opacity: .15;
+    transition: opacity .15s;
+}
+
+.graph-card:hover .card-actions,
+.graph-card:focus-within .card-actions {
+    opacity: 1;
+}
+
+@media (max-width: 700px) {
+    .dashboard-shell { width: 100%; }
+    .dashboard { grid-template-columns: 1fr; }
+}

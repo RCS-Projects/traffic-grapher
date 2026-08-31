@@ -1,0 +1,113 @@
+/* The base card style intentionally uses grid; honor the semantic hidden state. */
+.chart-empty[hidden] {
+    display: none !important;
+}
+
+.button:disabled,
+.small-button:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+}
+
+.dashboard-grid-control {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: #cbd6e3;
+    font-weight: 700;
+}
+
+.trace-toggle {
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+    padding: 9px;
+    border-radius: 6px;
+    background: #141e2b;
+    color: #cbd6e3;
+}
+
+.trace-toggle input {
+    width: auto;
+    margin-top: 2px;
+    accent-color: var(--blue);
+}
+
+.trace-toggle strong,
+.trace-toggle small {
+    display: block;
+}
+
+.graph-card:has(.group-key) .card-footer {
+    height: auto;
+    min-height: 29px;
+    flex-wrap: wrap;
+    gap: 5px 12px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+.group-key,
+.group-direction {
+    white-space: nowrap;
+}
+
+.group-direction {
+    color: #8490a1;
+}
+
+.trace-toggle small {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.chart-wrap {
+    min-height: 140px;
+    max-height: 640px;
+}
+
+.resize-handle {
+    position: absolute;
+    right: 5px;
+    bottom: 3px;
+    z-index: 4;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #617187;
+    cursor: ns-resize;
+    font-size: 14px;
+    padding: 4px 6px;
+    touch-action: none;
+}
+
+.resize-handle:hover {
+    background: #202b3a;
+    color: #dbe7f5;
+}
+
+.graph-card.warning {
+    border-color: #a9793c;
+}
+
+.graph-card.warning .card-title h3::after,
+.graph-card.critical .card-title h3::after {
+    content: ' HIGH UTILIZATION';
+    margin-left: 7px;
+    color: #ffb15e;
+    font: 9px ui-monospace, monospace;
+    letter-spacing: .4px;
+}
+
+.graph-card.critical {
+    border-color: #d66464;
+}
+
+.graph-card.critical .card-title h3::after {
+    color: #ff8484;
+    content: ' CRITICAL UTILIZATION';
+}
