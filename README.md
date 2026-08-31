@@ -6,7 +6,7 @@ It is intended for a local network: no cloud account, database server, or separa
 
 ## What it does
 
-- Live inbound/outbound traffic graphs with a rolling 15-minute view
+- Live inbound/outbound traffic graphs with a rolling 5-minute view
 - SNMPv1 and SNMPv2c device scanning
 - Named ports, draggable/reorderable and resizable graph cards
 - One to four dashboard columns, saved per browser/dashboard configuration

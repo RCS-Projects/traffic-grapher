@@ -9,7 +9,7 @@ if ('serviceWorker' in navigator) {
 }
 
 const $ = (id) => document.getElementById(id);
-const HISTORY_SECONDS = 15 * 60;
+const HISTORY_SECONDS = 5 * 60;
 const api = async (path, method = 'GET', body = null) => {
     const opts = { method, headers: {} };
     if (body !== null) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
