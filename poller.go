@@ -124,20 +124,7 @@ func (p *Poller) poll(cfg Config) {
 		deviceMap[d.ID] = d
 	}
 
-	selectedByDevice := make(map[string]map[int]bool)
-	for _, key := range cfg.Selected {
-		devID, idx, ok := parseIfaceKey(key)
-		if !ok {
-			continue
-		}
-		if _, ok := deviceMap[devID]; !ok {
-			continue
-		}
-		if selectedByDevice[devID] == nil {
-			selectedByDevice[devID] = make(map[int]bool)
-		}
-		selectedByDevice[devID][idx] = true
-	}
+	selectedByDevice := pollingTargets(cfg, deviceMap)
 
 	for devID, sel := range selectedByDevice {
 		dev := deviceMap[devID]
@@ -156,7 +143,7 @@ func (p *Poller) poll(cfg Config) {
 			}
 			key := ifaceKey(devID, idx)
 			name := fmt.Sprintf("%s/%d", devID, idx)
-			inbps, outbps := p.computeDelta(key, ci, co, dev.UseHC, now)
+			inbps, outbps := p.computeDelta(key, ci, co, interfaceUsesHC(dev, idx), now)
 			total := inbps + outbps
 			sample.Interfaces[key] = IfaceSample{
 				In:    inbps,
@@ -184,8 +171,39 @@ func (p *Poller) poll(cfg Config) {
 
 	if p.app != nil {
 		sample.PollMS = time.Since(now).Milliseconds()
-		p.app.Broadcast(map[string]interface{}{"type": "sample", "data": sample})
+		p.app.publishSample(sample)
 	}
+}
+
+func pollingTargets(cfg Config, devices map[string]Device) map[string]map[int]bool {
+	selectedByDevice := make(map[string]map[int]bool)
+	for _, key := range cfg.Selected {
+		devID, idx, ok := parseIfaceKey(key)
+		if !ok {
+			continue
+		}
+		if _, ok := devices[devID]; !ok {
+			continue
+		}
+		if selectedByDevice[devID] == nil {
+			selectedByDevice[devID] = make(map[int]bool)
+		}
+		selectedByDevice[devID][idx] = true
+	}
+	// Group membership is also a polling request. A group must remain complete
+	// even when its member interfaces do not have individual dashboard cards.
+	for _, group := range cfg.Groups {
+		for _, member := range group.Members {
+			if _, ok := devices[member.DeviceID]; !ok {
+				continue
+			}
+			if selectedByDevice[member.DeviceID] == nil {
+				selectedByDevice[member.DeviceID] = make(map[int]bool)
+			}
+			selectedByDevice[member.DeviceID][member.Index] = true
+		}
+	}
+	return selectedByDevice
 }
 
 func (p *Poller) pollDevice(dev Device, selected map[int]bool) (map[int]uint64, map[int]uint64, error) {
@@ -195,13 +213,6 @@ func (p *Poller) pollDevice(dev Device, selected map[int]bool) (map[int]uint64, 
 	}
 	defer g.Conn.Close()
 
-	inOID := oidIfInOctets
-	outOID := oidIfOutOctets
-	if dev.UseHC {
-		inOID = oidIfHCInOctets
-		outOID = oidIfHCOutOctets
-	}
-
 	curIn := make(map[int]uint64, len(selected))
 	curOut := make(map[int]uint64, len(selected))
 	// A GET only asks the device for counters that are actively graphed. It is
@@ -210,6 +221,12 @@ func (p *Poller) pollDevice(dev Device, selected map[int]bool) (map[int]uint64, 
 	inRequests := make(map[string]int, len(selected))
 	outRequests := make(map[string]int, len(selected))
 	for idx := range selected {
+		inOID := oidIfInOctets
+		outOID := oidIfOutOctets
+		if interfaceUsesHC(dev, idx) {
+			inOID = oidIfHCInOctets
+			outOID = oidIfHCOutOctets
+		}
 		in := fmt.Sprintf("%s.%d", inOID, idx)
 		out := fmt.Sprintf("%s.%d", outOID, idx)
 		requests = append(requests, in, out)
@@ -241,6 +258,20 @@ func (p *Poller) pollDevice(dev Device, selected map[int]bool) (map[int]uint64, 
 		}
 	}
 	return curIn, curOut, nil
+}
+
+func interfaceUsesHC(dev Device, index int) bool {
+	if !dev.UseHC {
+		return false
+	}
+	for _, iface := range dev.Interfaces {
+		if iface.Index == index {
+			return iface.HasHC
+		}
+	}
+	// Preserve compatibility with configurations saved before per-interface HC
+	// support was recorded.
+	return true
 }
 
 func (p *Poller) computeDelta(key string, curIn, curOut uint64, useHC bool, now time.Time) (float64, float64) {

@@ -9,7 +9,7 @@ if ('serviceWorker' in navigator) {
 }
 
 const $ = (id) => document.getElementById(id);
-const HISTORY_SECONDS = 5 * 60;
+const HISTORY_SECONDS = 10 * 60;
 const api = async (path, method = 'GET', body = null) => {
     const opts = { method, headers: {} };
     if (body !== null) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
@@ -31,6 +31,7 @@ let config = { devices: [], groups: [], dashboardCards: [], dashboardColumns: 1,
 let samples = [];
 let charts = new Map();
 let monitoring = false;
+let displayPaused = false;
 let ws;
 let dragID = null;
 let resizeFrame = 0;
@@ -73,7 +74,6 @@ async function init() {
 }
 
 function bindEvents() {
-    $('btn-settings').addEventListener('click', () => setDrawer(true));
     $('btn-quick-settings').addEventListener('click', () => setDrawer(true));
     $('btn-close-settings').addEventListener('click', () => setDrawer(false));
     $('drawer-scrim').addEventListener('click', () => setDrawer(false));
@@ -83,6 +83,7 @@ function bindEvents() {
     $('group-member-traces').addEventListener('change', async () => { config.groupMemberTraces = $('group-member-traces').checked; await saveConfig(); });
     $('btn-start').addEventListener('click', start);
     $('btn-stop').addEventListener('click', stop);
+    $('btn-pause-display').addEventListener('click', () => { displayPaused = !displayPaused; updateControls(); if (!displayPaused) updateDashboard(); });
     window.addEventListener('keydown', (event) => {
         if (event.target.matches('input, select, textarea')) return;
         if (event.key === '?') { event.preventDefault(); setDrawer(true); }
@@ -108,11 +109,13 @@ function setStatus(kind, text) {
 }
 
 function updateControls() {
-    const ready = config.selected.length > 0;
+    const ready = config.selected.length > 0 || config.groups.some((group) => group.members?.length);
     $('btn-start').disabled = monitoring || !ready;
     $('btn-stop').disabled = !monitoring;
     $('btn-start').textContent = monitoring ? 'Monitoring active' : ready ? 'Start monitoring' : 'Select an interface';
     $('btn-stop').textContent = monitoring ? 'Stop monitoring' : 'Stopped';
+    $('btn-pause-display').textContent = displayPaused ? 'Resume display' : 'Pause display';
+    $('btn-pause-display').classList.toggle('primary', displayPaused);
 }
 
 function connectWS() {
@@ -123,12 +126,18 @@ function connectWS() {
         const message = JSON.parse(event.data);
         if (message.type === 'config') { config = message.data; normalizeClientConfig(); $('interval').value = config.interval || 3; updateControls(); renderSettings(); renderDashboard(); }
         if (message.type === 'monitoring') { monitoring = message.running; updateControls(); setStatus(monitoring ? 'live' : '', monitoring ? 'Monitoring live' : 'Monitoring stopped'); }
+        if (message.type === 'history') {
+            const merged = new Map([...samples, ...(message.data || [])].map((sample) => [sample.ts, sample]));
+            const cutoff = Date.now() - HISTORY_SECONDS * 1000;
+            samples = [...merged.values()].filter((sample) => sample.ts >= cutoff).sort((a, b) => a.ts - b.ts);
+            if (!displayPaused) updateDashboard();
+        }
         if (message.type === 'sample') {
             samples.push(message.data);
             const cutoff = Date.now() - HISTORY_SECONDS * 1000;
             samples = samples.filter((sample) => sample.ts >= cutoff);
             if (monitoring) setStatus('live', 'Monitoring live');
-            updateDashboard();
+            if (!displayPaused) updateDashboard();
         }
     };
     ws.onclose = () => { setStatus('error', 'Reconnecting…'); setTimeout(connectWS, 2000); };
@@ -197,7 +206,24 @@ function renderSettings() {
         const head = document.createElement('div'); head.className = 'group-item-head'; head.innerHTML = `<strong>${escapeHTML(group.name)}</strong>`;
         const remove = document.createElement('button'); remove.className = 'small-button'; remove.textContent = 'Delete'; remove.addEventListener('click', async () => { config.groups.splice(index, 1); config.dashboardCards = config.dashboardCards.filter((card) => card.sourceKey !== group.name || card.sourceType !== 'group'); await saveConfig(); });
         const members = document.createElement('div'); members.className = 'group-members'; members.textContent = group.members.map((member) => interfaceLabel(ifaceKey(member.deviceID, member.index))).join(', ') || 'No interfaces';
-        head.append(remove); el.append(head, members); groups.append(el);
+        const editor = document.createElement('details'); editor.className = 'group-editor';
+        const summary = document.createElement('summary'); summary.textContent = 'Edit members'; editor.append(summary);
+        const choices = document.createElement('div'); choices.className = 'group-editor-choices';
+        const selectedMembers = new Set(group.members.map((member) => ifaceKey(member.deviceID, member.index)));
+        allInterfaces().sort((a, b) => interfaceLabel(ifaceKey(a.deviceID, a.index)).localeCompare(interfaceLabel(ifaceKey(b.deviceID, b.index)))).forEach((iface) => {
+            const key = ifaceKey(iface.deviceID, iface.index); const choice = document.createElement('label'); choice.className = 'group-member-choice';
+            const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = selectedMembers.has(key);
+            checkbox.addEventListener('change', () => checkbox.checked ? selectedMembers.add(key) : selectedMembers.delete(key));
+            const text = document.createElement('span'); text.textContent = interfaceLabel(key); choice.append(checkbox, text); choices.append(choice);
+        });
+        if (!allInterfaces().length) choices.innerHTML = '<span class="helper">Scan a device before editing members.</span>';
+        const saveMembers = document.createElement('button'); saveMembers.type = 'button'; saveMembers.className = 'button'; saveMembers.textContent = 'Save members'; saveMembers.disabled = !allInterfaces().length;
+        saveMembers.addEventListener('click', async () => {
+            group.members = [...selectedMembers].map((key) => { const [deviceID, index] = key.split(':'); return { deviceID, index: Number(index) }; });
+            await saveConfig();
+        });
+        editor.append(choices, saveMembers);
+        head.append(remove); el.append(head, members, editor); groups.append(el);
     });
     $('grid-columns').value = String(config.dashboardColumns);
     $('group-member-traces').checked = config.groupMemberTraces;
@@ -253,6 +279,30 @@ function chartValues(data) {
         ? [data.xs, ...data.members.flatMap((member) => [member.inbound, member.outbound]), data.inbound, data.outbound]
         : [data.xs, data.inbound, data.outbound];
 }
+
+function hoverTooltipPlugin() {
+    let tooltip;
+    return { hooks: {
+        init: (chart) => {
+            tooltip = document.createElement('div'); tooltip.className = 'chart-tooltip'; tooltip.hidden = true; chart.over.append(tooltip);
+        },
+        setCursor: (chart) => {
+            const index = chart.cursor.idx;
+            if (index == null || !tooltip) { if (tooltip) tooltip.hidden = true; return; }
+            const time = new Date(chart.data[0][index]).toLocaleTimeString();
+            const rows = chart.series.slice(1).map((item, seriesIndex) => {
+                const value = chart.data[seriesIndex + 1]?.[index];
+                const color = typeof item.stroke === 'string' ? item.stroke : '#dbe7f5';
+                return `<span><i style="background:${color}"></i>${escapeHTML(item.label)} <strong>${fmtBps(value)}</strong></span>`;
+            }).join('');
+            tooltip.innerHTML = `<b>${escapeHTML(time)}</b>${rows}`; tooltip.hidden = false;
+            const x = Number(chart.cursor.left) || 0; const y = Number(chart.cursor.top) || 0;
+            const placeLeft = x > chart.over.clientWidth * .58;
+            tooltip.style.left = `${Math.max(6, x + (placeLeft ? -tooltip.offsetWidth - 12 : 12))}px`;
+            tooltip.style.top = `${Math.max(6, Math.min(chart.over.clientHeight - tooltip.offsetHeight - 6, y - 10))}px`;
+        },
+    } };
+}
 function makeChart(card, root) {
     const data = cardData(card); const capacity = capacityFor(card);
     const range = (_, min, max) => {
@@ -261,19 +311,18 @@ function makeChart(card, root) {
     };
     const isBreakdown = data.members.length > 0;
     const series = [{ label: 'Time' }];
-    const values = [data.xs];
     if (isBreakdown) {
         data.members.forEach((member) => {
-            series.push({ label: `${member.label} in`, scale: 'bps', stroke: member.color, width: 1.3, points: { show: false } }); values.push(member.inbound);
-            series.push({ label: `${member.label} out`, scale: 'bps', stroke: member.color, width: 1.3, dash: [5, 4], points: { show: false } }); values.push(member.outbound);
+            series.push({ label: `${member.label} in`, scale: 'bps', stroke: member.color, width: 1.3, points: { show: false } });
+            series.push({ label: `${member.label} out`, scale: 'bps', stroke: member.color, width: 1.3, dash: [5, 4], points: { show: false } });
         });
-        series.push({ label: 'Combined in', scale: 'bps', stroke: '#f1f6fb', width: 2.2, points: { show: false } }); values.push(data.inbound);
-        series.push({ label: 'Combined out', scale: 'bps', stroke: '#f1f6fb', width: 2.2, dash: [7, 4], points: { show: false } }); values.push(data.outbound);
+        series.push({ label: 'Combined in', scale: 'bps', stroke: '#f1f6fb', width: 2.2, points: { show: false } });
+        series.push({ label: 'Combined out', scale: 'bps', stroke: '#f1f6fb', width: 2.2, dash: [7, 4], points: { show: false } });
     } else {
-        series.push({ label: 'Inbound', scale: 'bps', stroke: '#36a8f5', fill: 'rgba(54,168,245,.38)', width: 1.5, points: { show: false } }); values.push(data.inbound);
-        series.push({ label: 'Outbound', scale: 'bps', stroke: '#ff8a3d', fill: 'rgba(255,138,61,.34)', width: 1.5, points: { show: false } }); values.push(data.outbound);
+        series.push({ label: 'Inbound', scale: 'bps', stroke: '#36a8f5', fill: 'rgba(54,168,245,.38)', width: 1.5, points: { show: false } });
+        series.push({ label: 'Outbound', scale: 'bps', stroke: '#ff8a3d', fill: 'rgba(255,138,61,.34)', width: 1.5, points: { show: false } });
     }
-    const chart = new uPlot({ ...chartSize(root), ms: 1, series, scales: { x: { time: true, ms: 1 }, bps: { range } }, axes: [{ values: (_, values) => values.map((value) => new Date(value).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#758397' }, { side: 1, scale: 'bps', size: 86, values: (_, values) => values.map((value) => value === 0 ? '0' : fmtBps(value)), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#92a2b5' }], cursor: { drag: { x: true, y: false }, points: { show: true, size: 6 } }, legend: { show: false } }, chartValues(data), root);
+    const chart = new uPlot({ ...chartSize(root), ms: 1, series, plugins: [hoverTooltipPlugin()], scales: { x: { time: true, ms: 1 }, bps: { range } }, axes: [{ values: (_, values) => values.map((value) => new Date(value).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#758397' }, { side: 1, scale: 'bps', size: 86, values: (_, values) => values.map((value) => value === 0 ? '0' : fmtBps(value)), grid: { stroke: '#263445' }, ticks: { stroke: '#263445' }, stroke: '#92a2b5' }], cursor: { drag: { x: true, y: false }, points: { show: true, size: 6 } }, legend: { show: false } }, chartValues(data), root);
     chart.root = root; return chart;
 }
 
@@ -286,7 +335,7 @@ function renderDashboard() {
         const data = cardData(card); const article = document.createElement('article'); article.className = 'graph-card'; article.dataset.cardId = card.id;
         const capacity = capacityFor(card); const utilization = capacity ? (data.latest.total || 0) / capacity : 0;
         if (utilization >= .9) article.classList.add('critical'); else if (utilization >= .7) article.classList.add('warning');
-        article.innerHTML = `<header class="card-header"><span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span><div class="card-title"><h3>${escapeHTML(labelFor(card))}</h3><p>${escapeHTML(sublabelFor(card))}</p></div><div class="card-metrics">${metric('In', data.latest.in, 'in')}${metric('Out', data.latest.out, 'out')}${metric('Total', data.latest.total)}</div><div class="card-actions"><select class="scale-select" aria-label="Graph scale"><option value="auto">Auto scale</option><option value="capacity">Link capacity</option></select><button class="small-button card-up" title="Move graph up">↑</button><button class="small-button card-down" title="Move graph down">↓</button><button class="small-button card-hide" title="Hide card">◉</button></div></header><div class="chart-wrap" style="height:${card.height || 205}px"><div class="chart"></div><div class="chart-empty"><strong>Waiting for this interface</strong><span>The graph will appear after its first poll</span></div><button class="resize-handle" title="Drag to resize graph" aria-label="Resize graph">↘</button></div><footer class="card-footer"><span><i class="legend-dot in"></i>INBOUND</span><span><i class="legend-dot out"></i>OUTBOUND</span><span class="metric-average">AVG ${fmtBps(data.average)}</span><span class="metric-peak">PEAK ${fmtBps(data.peak)}</span><span class="card-error"></span></footer>`;
+        article.innerHTML = `<header class="card-header"><span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span><div class="card-title"><h3>${escapeHTML(labelFor(card))}</h3><p>${escapeHTML(sublabelFor(card))}</p></div><div class="card-metrics">${metric('In', data.latest.in, 'in')}${metric('Out', data.latest.out, 'out')}${metric('Total', data.latest.total)}</div><div class="card-actions"><select class="scale-select" aria-label="Graph scale"><option value="auto">Auto scale</option><option value="capacity">Link capacity</option></select><button class="small-button card-reset" title="Reset graph zoom">↺</button><button class="small-button card-up" title="Move graph up">↑</button><button class="small-button card-down" title="Move graph down">↓</button><button class="small-button card-hide" title="Hide card">◉</button></div></header><div class="chart-wrap" style="height:${card.height || 205}px"><div class="chart"></div><div class="chart-empty"><strong>Waiting for this interface</strong><span>The graph will appear after its first poll</span></div><button class="resize-handle" title="Drag to resize graph" aria-label="Resize graph">↘</button></div><footer class="card-footer"><span><i class="legend-dot in"></i>INBOUND</span><span><i class="legend-dot out"></i>OUTBOUND</span><span class="metric-average">AVG ${fmtBps(data.average)}</span><span class="metric-peak">PEAK ${fmtBps(data.peak)}</span><span class="card-error"></span></footer>`;
         if (data.members.length) {
             const footer = article.querySelector('.card-footer');
             footer.innerHTML = `<span class="group-key"><i class="legend-dot" style="background:#f1f6fb"></i>COMBINED</span>${data.members.map((member) => `<span class="group-key" title="${escapeHTML(member.label)}"><i class="legend-dot" style="background:${member.color}"></i>${escapeHTML(member.label)}</span>`).join('')}<span class="group-direction">solid IN · dashed OUT</span><span class="card-error"></span>`;
@@ -300,6 +349,10 @@ function renderDashboard() {
         article.querySelector('.chart-empty').hidden = data.present;
         article.querySelector('.card-error').textContent = data.error ? `Poll error: ${data.error}` : '';
         charts.set(card.id, makeChart(card, article.querySelector('.chart')));
+        article.querySelector('.card-reset').addEventListener('click', () => {
+            const chart = charts.get(card.id); const xs = chart?.data?.[0];
+            if (chart && xs?.length) chart.setScale('x', { min: xs[0], max: xs.at(-1) });
+        });
     });
     updateDashboardTotal();
 }

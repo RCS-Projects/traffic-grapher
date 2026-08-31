@@ -6,7 +6,7 @@ It is intended for a local network: no cloud account, database server, or separa
 
 ## What it does
 
-- Live inbound/outbound traffic graphs with a rolling 5-minute view
+- Live inbound/outbound traffic graphs with a rolling 10-minute view
 - SNMPv1 and SNMPv2c device scanning
 - Named ports, draggable/reorderable and resizable graph cards
 - One to four dashboard columns, saved per browser/dashboard configuration
@@ -27,16 +27,18 @@ docker compose version
 
 ### 2. Clone and start Traffic Grapher
 
+The quickest deployment pulls the ready-built image from GitHub Container Registry:
+
 ```bash
 git clone https://github.com/RCS-Projects/traffic-grapher.git
 cd traffic-grapher
-docker compose up -d --build
+docker compose -f compose.ghcr.yaml up -d
 ```
 
-The first build downloads the Go and Node build images. Later starts only need:
+To build from source instead:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### 3. Open the dashboard
@@ -53,7 +55,7 @@ Open the floating gear icon, scan an SNMP device, select its interfaces, then st
 
 ## Docker deployment details
 
-The included [`compose.yaml`](compose.yaml) is the recommended deployment method. It uses Linux host networking so the container can reach SNMP devices on the same LAN and serves the dashboard directly on port `8080`.
+The included [`compose.ghcr.yaml`](compose.ghcr.yaml) pulls the published image. [`compose.yaml`](compose.yaml) builds the same image locally from source. Both use Linux host networking so the container can reach SNMP devices on the same LAN and serve the dashboard directly on port `8080`.
 
 Configuration survives image upgrades in `./data/config.json`, including devices, interface names, groups, dashboard order, sizes, and graph-column setting. To back it up:
 
@@ -65,7 +67,8 @@ To update a checkout after pulling new source:
 
 ```bash
 git pull
-docker compose up -d --build
+docker compose -f compose.ghcr.yaml pull
+docker compose -f compose.ghcr.yaml up -d
 ```
 
 Useful operational commands:
@@ -82,9 +85,9 @@ docker compose down
 ## Using the dashboard
 
 - **Port names:** Open Settings and choose **Rename** next to an interface. Leave the prompt empty to return to the SNMP name.
-- **Groups:** Select the member interfaces first, then add a group. A group chart shows the combined total plus colored traces for each member; the per-port cards remain available as well.
+- **Groups:** Select the initial member interfaces, then add a group. Use **Edit members** to change it later. A group chart shows the combined total plus colored traces for each member; group members stay monitored even when their individual cards are hidden.
 - **Layout:** In Settings → Dashboard cards, choose one to four graphs across. Drag a graph by its handle to reorder it and drag its lower-right handle to set its height.
-- **Live updates:** Samples update the charts in place, so resizing, dragging, and the current zoom/cursor interaction are not reset by each SNMP poll.
+- **Live updates:** Samples update the charts in place. Hover for exact values, use ↺ to reset zoom, or pause the display in Settings to inspect a frozen view while collection continues.
 - **Polling rate:** Change the interval in Settings. Many SNMP agents are comfortable at 1–3 seconds, but use a longer interval for slow or low-end hardware.
 
 ## App-style browser window

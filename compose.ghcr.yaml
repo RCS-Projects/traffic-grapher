@@ -1,6 +1,6 @@
 services:
   traffic-grapher:
-    build: .
+    image: ghcr.io/rcs-projects/traffic-grapher:latest
     container_name: traffic-grapher
     network_mode: host
     restart: unless-stopped

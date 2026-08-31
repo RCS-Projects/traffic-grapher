@@ -32,3 +32,28 @@ func TestNormalizeConfigPreservesSavedCardOptions(t *testing.T) {
 		t.Fatalf("saved dashboard card was changed: %#v", cfg.DashboardCards)
 	}
 }
+
+func TestGroupMembersArePollingTargets(t *testing.T) {
+	cfg := Config{Groups: []Group{{Name: "WAN", Members: []Member{{DeviceID: "router", Index: 7}}}}}
+	if !hasPollingTargets(cfg) {
+		t.Fatal("group member should count as a polling target")
+	}
+	targets := pollingTargets(cfg, map[string]Device{"router": {ID: "router"}})
+	if !targets["router"][7] {
+		t.Fatalf("group interface missing from polling targets: %#v", targets)
+	}
+}
+
+func TestLayoutChangesDoNotRestartPoller(t *testing.T) {
+	oldCfg := Config{Interval: 3, Devices: []Device{{ID: "router", IP: "192.0.2.1", Community: "public", Version: "v2c", Port: 161, UseHC: true}}, DashboardColumns: 1}
+	newCfg := oldCfg
+	newCfg.DashboardColumns = 3
+	newCfg.Labels = map[string]string{"router:7": "WAN"}
+	if pollerRestartRequired(oldCfg, newCfg) {
+		t.Fatal("dashboard-only change should not restart polling")
+	}
+	newCfg.Interval = 1
+	if !pollerRestartRequired(oldCfg, newCfg) {
+		t.Fatal("interval change should restart polling")
+	}
+}

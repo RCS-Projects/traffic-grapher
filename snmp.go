@@ -14,6 +14,7 @@ const (
 	oidIfAlias       = "1.3.6.1.2.1.31.1.1.1.18"
 	oidIfOperStatus  = "1.3.6.1.2.1.2.2.1.8"
 	oidIfSpeed       = "1.3.6.1.2.1.2.2.1.5"
+	oidIfHighSpeed   = "1.3.6.1.2.1.31.1.1.1.15"
 	oidIfHCInOctets  = "1.3.6.1.2.1.31.1.1.1.6"
 	oidIfHCOutOctets = "1.3.6.1.2.1.31.1.1.1.10"
 	oidIfInOctets    = "1.3.6.1.2.1.2.2.1.10"
@@ -161,24 +162,28 @@ func ScanDevice(ip, community, version string, port uint16) (ScanResult, error) 
 	}); err != nil {
 		return ScanResult{}, fmt.Errorf("ifSpeed: %w", err)
 	}
+	// ifSpeed is capped by its 32-bit gauge. ifHighSpeed reports Mbps and is
+	// authoritative for modern links above 4.29 Gbps. It is optional on older
+	// agents, so a failed walk leaves the ifSpeed value in place.
+	_ = walk(oidIfHighSpeed, func(idx int, pdu gosnmp.SnmpPDU) {
+		if n, ok := toUint64(pdu.Value); ok && n > 0 {
+			if i, ok := ifaces[idx]; ok {
+				i.Speed = n * 1_000_000
+			}
+		}
+	})
 
-	// Detect 64-bit counter support.
-	hcSupported := false
-	var hcErr error
-	if g.Version == gosnmp.Version1 {
-		_, hcErr = g.WalkAll(oidIfHCInOctets)
-	} else {
-		_, hcErr = g.BulkWalkAll(oidIfHCInOctets)
-	}
-	if hcErr == nil {
-		hcSupported = true
-	}
+	// Detect 64-bit counter support per interface; mixed-capability agents are
+	// common enough that a device-wide assumption can break individual ports.
+	hcIndexes := make(map[int]bool)
+	_ = walk(oidIfHCInOctets, func(idx int, _ gosnmp.SnmpPDU) { hcIndexes[idx] = true })
 
 	list := make([]InterfaceInfo, 0, len(ifaces))
 	for _, i := range ifaces {
-		i.HasHC = hcSupported
+		i.HasHC = hcIndexes[i.Index]
 		list = append(list, *i)
 	}
+	hcSupported := len(hcIndexes) > 0
 
 	device := Device{
 		ID:         id,

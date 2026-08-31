@@ -31,3 +31,13 @@ func TestComputeDelta(t *testing.T) {
 		t.Fatalf("expected rollover delta %d got %v", 301*8, in)
 	}
 }
+
+func TestInterfaceUsesPerPortHighCapacityCounters(t *testing.T) {
+	device := Device{UseHC: true, Interfaces: []InterfaceInfo{{Index: 1, HasHC: true}, {Index: 2, HasHC: false}}}
+	if !interfaceUsesHC(device, 1) {
+		t.Fatal("interface 1 should use 64-bit counters")
+	}
+	if interfaceUsesHC(device, 2) {
+		t.Fatal("interface 2 should fall back to 32-bit counters")
+	}
+}

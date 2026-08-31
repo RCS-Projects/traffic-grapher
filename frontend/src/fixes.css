@@ -58,6 +58,114 @@
     color: #8490a1;
 }
 
+.group-editor {
+    margin-top: 9px;
+    border-top: 1px solid #263445;
+    padding-top: 8px;
+}
+
+.group-editor summary {
+    color: #9db0c5;
+    cursor: pointer;
+    font-size: 11px;
+    user-select: none;
+}
+
+.group-editor-choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    margin: 9px 0;
+    max-height: 210px;
+    overflow: auto;
+}
+
+.group-member-choice {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 6px 7px;
+    border-radius: 5px;
+    background: #0d151f;
+    color: #cbd6e3;
+    font-size: 11px;
+}
+
+.group-member-choice input {
+    width: auto;
+    accent-color: var(--blue);
+}
+
+.group-member-choice span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.drawer-connection {
+    margin: 0 0 12px;
+}
+
+.drawer-interval {
+    display: grid;
+    grid-template-columns: 1fr 72px auto;
+    align-items: center;
+    gap: 8px;
+    color: #b9c7d6;
+}
+
+.monitoring-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.chart-tooltip {
+    position: absolute;
+    z-index: 8;
+    display: grid;
+    gap: 4px;
+    min-width: 145px;
+    max-width: min(260px, 80%);
+    padding: 8px 10px;
+    border: 1px solid #405269;
+    border-radius: 7px;
+    background: #0a1019eb;
+    box-shadow: 0 8px 24px #0008;
+    color: #dce7f3;
+    font: 10px ui-monospace, monospace;
+    pointer-events: none;
+}
+
+.chart-tooltip[hidden] {
+    display: none;
+}
+
+.chart-tooltip b {
+    margin-bottom: 2px;
+    color: white;
+}
+
+.chart-tooltip span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.chart-tooltip span i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.chart-tooltip strong {
+    margin-left: auto;
+    color: white;
+}
+
 .trace-toggle small {
     margin-top: 3px;
     color: var(--muted);

@@ -12,10 +12,14 @@ import (
 
 // App ties together config, SNMP polling and WebSocket clients.
 type App struct {
-	poller *Poller
-	hub    *Hub
-	mu     sync.RWMutex
+	poller    *Poller
+	hub       *Hub
+	mu        sync.RWMutex
+	historyMu sync.RWMutex
+	history   []Sample
 }
+
+const historyWindow = 10 * time.Minute
 
 // NewApp creates the app and starts the poller if the saved config has selections.
 func NewApp() *App {
@@ -24,7 +28,7 @@ func NewApp() *App {
 	go a.hub.run()
 
 	cfg := getConfig()
-	if len(cfg.Devices) > 0 && len(cfg.Selected) > 0 {
+	if len(cfg.Devices) > 0 && hasPollingTargets(cfg) {
 		a.poller.Start(cfg)
 	}
 	return a
@@ -57,6 +61,7 @@ func (a *App) handleConfig(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, getConfig())
 	case http.MethodPost:
+		oldCfg := getConfig()
 		var cfg Config
 		if err := readJSON(r, &cfg); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -66,12 +71,13 @@ func (a *App) handleConfig(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		if a.poller != nil && a.poller.Running() {
-			a.poller.Start(cfg)
+		savedCfg := getConfig()
+		if a.poller != nil && a.poller.Running() && pollerRestartRequired(oldCfg, savedCfg) {
+			a.poller.Start(savedCfg)
 		}
-		a.Broadcast(map[string]interface{}{"type": "config", "data": getConfig()})
+		a.Broadcast(map[string]interface{}{"type": "config", "data": savedCfg})
 		a.Broadcast(map[string]interface{}{"type": "monitoring", "running": a.poller.Running()})
-		writeJSON(w, http.StatusOK, cfg)
+		writeJSON(w, http.StatusOK, savedCfg)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -112,8 +118,12 @@ func (a *App) handleScan(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/start
 func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	cfg := getConfig()
-	if len(cfg.Selected) == 0 {
+	if !hasPollingTargets(cfg) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "select at least one interface before starting monitoring"})
 		return
 	}
@@ -124,6 +134,10 @@ func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/stop
 func (a *App) handleStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	a.poller.Stop()
 	a.Broadcast(map[string]interface{}{"type": "monitoring", "running": false})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
@@ -158,9 +172,40 @@ func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 	}
+	if data, err := json.Marshal(map[string]interface{}{"type": "history", "data": a.historySnapshot()}); err == nil {
+		select {
+		case client.send <- data:
+		default:
+		}
+	}
 
 	go client.writePump()
 	go client.readPump()
+}
+
+func (a *App) publishSample(sample Sample) {
+	a.recordSample(sample)
+	a.Broadcast(map[string]interface{}{"type": "sample", "data": sample})
+}
+
+func (a *App) recordSample(sample Sample) {
+	cutoff := sample.TS - historyWindow.Milliseconds()
+	a.historyMu.Lock()
+	a.history = append(a.history, sample)
+	first := 0
+	for first < len(a.history) && a.history[first].TS < cutoff {
+		first++
+	}
+	if first > 0 {
+		a.history = append([]Sample(nil), a.history[first:]...)
+	}
+	a.historyMu.Unlock()
+}
+
+func (a *App) historySnapshot() []Sample {
+	a.historyMu.RLock()
+	defer a.historyMu.RUnlock()
+	return append([]Sample(nil), a.history...)
 }
 
 // ---------- Hub ----------

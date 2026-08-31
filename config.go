@@ -45,14 +45,14 @@ type Group struct {
 
 // Config holds persistent app state.
 type Config struct {
-	Devices        []Device          `json:"devices"`
-	Groups         []Group           `json:"groups"`
-	DashboardCards     []DashboardCard `json:"dashboardCards"`
-	DashboardColumns   int             `json:"dashboardColumns"`
-	GroupMemberTraces  *bool           `json:"groupMemberTraces,omitempty"`
-	Labels             map[string]string `json:"labels,omitempty"` // interface key -> user-friendly name
-	Interval           int             `json:"interval"`         // seconds
-	Selected           []string        `json:"selected"`         // keys "deviceID:index"
+	Devices           []Device          `json:"devices"`
+	Groups            []Group           `json:"groups"`
+	DashboardCards    []DashboardCard   `json:"dashboardCards"`
+	DashboardColumns  int               `json:"dashboardColumns"`
+	GroupMemberTraces *bool             `json:"groupMemberTraces,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty"` // interface key -> user-friendly name
+	Interval          int               `json:"interval"`         // seconds
+	Selected          []string          `json:"selected"`         // keys "deviceID:index"
 }
 
 // configPath uses CONFIG_DIR when supplied. Containers mount this directory so
@@ -108,14 +108,38 @@ func saveConfig(cfg Config) error {
 		return err
 	}
 	configMu.Lock()
+	defer configMu.Unlock()
 	normalizeConfig(&cfg)
-	config = cfg
-	configMu.Unlock()
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	config = cfg
+	return nil
 }
 
 // normalizeConfig keeps older config.json files compatible and supplies cards
@@ -185,10 +209,46 @@ func getConfig() Config {
 	c.Devices = make([]Device, len(config.Devices))
 	copy(c.Devices, config.Devices)
 	c.Groups = make([]Group, len(config.Groups))
-	copy(c.Groups, config.Groups)
+	for i, group := range config.Groups {
+		c.Groups[i] = group
+		c.Groups[i].Members = append([]Member(nil), group.Members...)
+	}
+	c.DashboardCards = append([]DashboardCard(nil), config.DashboardCards...)
+	c.Labels = make(map[string]string, len(config.Labels))
+	for key, label := range config.Labels {
+		c.Labels[key] = label
+	}
 	c.Selected = make([]string, len(config.Selected))
 	copy(c.Selected, config.Selected)
 	return c
+}
+
+func hasPollingTargets(cfg Config) bool {
+	if len(cfg.Selected) > 0 {
+		return true
+	}
+	for _, group := range cfg.Groups {
+		if len(group.Members) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// pollerRestartRequired reports changes that invalidate counter baselines or
+// the ticker. Selections, groups, labels, and dashboard layout are read on the
+// next poll and do not need to interrupt live monitoring.
+func pollerRestartRequired(oldCfg, newCfg Config) bool {
+	if oldCfg.Interval != newCfg.Interval || len(oldCfg.Devices) != len(newCfg.Devices) {
+		return true
+	}
+	for i, oldDevice := range oldCfg.Devices {
+		newDevice := newCfg.Devices[i]
+		if oldDevice.ID != newDevice.ID || oldDevice.IP != newDevice.IP || oldDevice.Community != newDevice.Community || oldDevice.Version != newDevice.Version || oldDevice.Port != newDevice.Port || oldDevice.UseHC != newDevice.UseHC {
+			return true
+		}
+	}
+	return false
 }
 
 func ifaceKey(deviceID string, index int) string {
