@@ -303,10 +303,33 @@ function hoverTooltipPlugin() {
         },
     } };
 }
+
+function roundedScale(value) {
+    const magnitude = Math.max(1, Number(value) || 1);
+    const power = 10 ** Math.floor(Math.log10(magnitude));
+    const normalized = magnitude / power;
+    const step = [1, 2, 2.5, 5, 10].find((candidate) => normalized <= candidate) || 10;
+    return step * power;
+}
+
 function makeChart(card, root) {
     const data = cardData(card); const capacity = capacityFor(card);
+    let stableAutoMagnitude = 0;
+    let lastAutoScaleChange = 0;
     const range = (_, min, max) => {
-        const magnitude = card.scaleMode === 'capacity' && capacity > 0 ? capacity : Math.max(Math.abs(min || 0), Math.abs(max || 0), 1);
+        if (card.scaleMode === 'capacity' && capacity > 0) return [-capacity * 1.08, capacity * 1.08];
+        const observed = Math.max(Math.abs(min || 0), Math.abs(max || 0), 1);
+        const now = Date.now();
+        // Auto scale should feel stable. Expand immediately for a meaningful new
+        // peak, but only shrink after the old range has been quiet for a while.
+        if (stableAutoMagnitude === 0 || observed > stableAutoMagnitude) {
+            stableAutoMagnitude = roundedScale(observed);
+            lastAutoScaleChange = now;
+        } else if (observed < stableAutoMagnitude * 0.5 && now - lastAutoScaleChange > 60_000) {
+            stableAutoMagnitude = roundedScale(observed);
+            lastAutoScaleChange = now;
+        }
+        const magnitude = stableAutoMagnitude;
         return [-magnitude * 1.08, magnitude * 1.08];
     };
     const isBreakdown = data.members.length > 0;
@@ -335,7 +358,7 @@ function renderDashboard() {
         const data = cardData(card); const article = document.createElement('article'); article.className = 'graph-card'; article.dataset.cardId = card.id;
         const capacity = capacityFor(card); const utilization = capacity ? (data.latest.total || 0) / capacity : 0;
         if (utilization >= .9) article.classList.add('critical'); else if (utilization >= .7) article.classList.add('warning');
-        article.innerHTML = `<header class="card-header"><span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span><div class="card-title"><h3>${escapeHTML(labelFor(card))}</h3><p>${escapeHTML(sublabelFor(card))}</p></div><div class="card-metrics">${metric('In', data.latest.in, 'in')}${metric('Out', data.latest.out, 'out')}${metric('Total', data.latest.total)}</div><div class="card-actions"><select class="scale-select" aria-label="Graph scale"><option value="auto">Auto scale</option><option value="capacity">Link capacity</option></select><button class="small-button card-reset" title="Reset graph zoom">↺</button><button class="small-button card-up" title="Move graph up">↑</button><button class="small-button card-down" title="Move graph down">↓</button><button class="small-button card-hide" title="Hide card">◉</button></div></header><div class="chart-wrap" style="height:${card.height || 205}px"><div class="chart"></div><div class="chart-empty"><strong>Waiting for this interface</strong><span>The graph will appear after its first poll</span></div><button class="resize-handle" title="Drag to resize graph" aria-label="Resize graph">↘</button></div><footer class="card-footer"><span><i class="legend-dot in"></i>INBOUND</span><span><i class="legend-dot out"></i>OUTBOUND</span><span class="metric-average">AVG ${fmtBps(data.average)}</span><span class="metric-peak">PEAK ${fmtBps(data.peak)}</span><span class="card-error"></span></footer>`;
+        article.innerHTML = `<header class="card-header"><span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span><div class="card-title"><h3>${escapeHTML(labelFor(card))}</h3><p>${escapeHTML(sublabelFor(card))}</p></div><div class="card-metrics">${metric('In', data.latest.in, 'in')}${metric('Out', data.latest.out, 'out')}${metric('Total', data.latest.total)}</div><div class="card-actions"><select class="scale-select" aria-label="Graph scale"><option value="auto">Auto scale (stable)</option><option value="capacity">Link capacity</option></select><button class="small-button card-reset" title="Reset graph zoom">↺</button><button class="small-button card-up" title="Move graph up">↑</button><button class="small-button card-down" title="Move graph down">↓</button><button class="small-button card-hide" title="Hide card">◉</button></div></header><div class="chart-wrap" style="height:${card.height || 205}px"><div class="chart"></div><div class="chart-empty"><strong>Waiting for this interface</strong><span>The graph will appear after its first poll</span></div><button class="resize-handle" title="Drag to resize graph" aria-label="Resize graph">↘</button></div><footer class="card-footer"><span><i class="legend-dot in"></i>INBOUND</span><span><i class="legend-dot out"></i>OUTBOUND</span><span class="metric-average">AVG ${fmtBps(data.average)}</span><span class="metric-peak">PEAK ${fmtBps(data.peak)}</span><span class="card-error"></span></footer>`;
         if (data.members.length) {
             const footer = article.querySelector('.card-footer');
             footer.innerHTML = `<span class="group-key"><i class="legend-dot" style="background:#f1f6fb"></i>COMBINED</span>${data.members.map((member) => `<span class="group-key" title="${escapeHTML(member.label)}"><i class="legend-dot" style="background:${member.color}"></i>${escapeHTML(member.label)}</span>`).join('')}<span class="group-direction">solid IN · dashed OUT</span><span class="card-error"></span>`;

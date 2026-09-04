@@ -13,6 +13,11 @@
 .dashboard {
     gap: 10px;
     grid-template-columns: repeat(var(--dashboard-columns, 1), minmax(0, 1fr));
+    align-items: start;
+}
+
+.graph-card {
+    min-width: 0;
 }
 
 .quick-settings {
