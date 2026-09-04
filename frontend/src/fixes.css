@@ -205,11 +205,14 @@
 
 .graph-card.warning .card-title h3::after,
 .graph-card.critical .card-title h3::after {
-    content: ' HIGH UTILIZATION';
-    margin-left: 7px;
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 0 1px 7px;
+    border-radius: 50%;
     color: #ffb15e;
-    font: 9px ui-monospace, monospace;
-    letter-spacing: .4px;
+    background: currentColor;
 }
 
 .graph-card.critical {
@@ -218,5 +221,61 @@
 
 .graph-card.critical .card-title h3::after {
     color: #ff8484;
-    content: ' CRITICAL UTILIZATION';
+}
+
+/* Live values must never change a card's dimensions. In dense dashboards the
+   controls float above the header only when wanted, instead of taking layout
+   width away from the title and metrics on every update. */
+.graph-card {
+    display: grid;
+    grid-template-rows: 64px auto auto;
+}
+
+.card-header {
+    position: relative;
+    min-height: 64px;
+    height: 64px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+.card-title {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.card-title h3,
+.card-title p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.card-metrics {
+    flex: 0 0 auto;
+    gap: 9px;
+}
+
+.metric-value {
+    display: inline-block;
+    min-width: 9ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.card-actions {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    z-index: 5;
+    margin-left: 0;
+    padding: 2px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: #101722e8;
+}
+
+.graph-card:hover .card-actions,
+.graph-card:focus-within .card-actions {
+    border-color: #344256;
 }

@@ -85,7 +85,7 @@ docker compose down
 
 - **Port names:** Open Settings and choose **Rename** next to an interface. Leave the prompt empty to return to the SNMP name.
 - **Groups:** Select the initial member interfaces, then add a group. Use **Edit members** to change it later. A group chart shows the combined total plus colored traces for each member; group members stay monitored even when their individual cards are hidden.
-- **Layout:** In Settings → Dashboard cards, choose one to four graphs across. Drag a graph by its handle to reorder it and drag its lower-right handle to set its height.
+- **Layout:** In Settings → Dashboard cards, choose one to four graphs across. Drag a graph by its handle to reorder it and drag its lower-right handle to set its height. Live values and utilization state do not change card dimensions.
 - **Live updates:** Samples update the charts in place. Auto scale uses a stable, rounded range rather than jumping on every sample; choose **Link capacity** for a fully fixed scale. Hover for exact values, use ↺ to reset zoom, or pause the display in Settings to inspect a frozen view while collection continues.
 - **Polling rate:** Change the interval in Settings. Many SNMP agents are comfortable at 1–3 seconds, but use a longer interval for slow or low-end hardware.
 
